@@ -155,7 +155,7 @@ app.post("/comments", logger, verifyToken, async (req, res) => {
 app.patch("/comments/:id", logger, verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
-    const filter = { _id: new ObjectId(id) };
+    const filter = { blogId: new ObjectId(id) };
     const updatedComment = req.body;
     const result = await commentsCollection.updateOne(filter, {
       $set: updatedComment,
@@ -166,8 +166,7 @@ app.patch("/comments/:id", logger, verifyToken, async (req, res) => {
     res.status(500).send({ message: "Error updating comment" });
   }
 })
-
-app.get("/blogs/:id/comments", async (req, res) => {
+app.get("/comments/:id", async (req, res) => {
   try {
     const blogId = req.params.id;
     const comments = await commentsCollection.find({ blogId }).toArray();
@@ -177,6 +176,7 @@ app.get("/blogs/:id/comments", async (req, res) => {
     res.status(500).send({ message: "Error fetching comments" });
   }
 });
+
 
 
 
