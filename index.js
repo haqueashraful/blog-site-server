@@ -126,7 +126,7 @@ async function run() {
     });
 
     // comment api
-    app.post("/comments", logger, verifyToken, async (req, res) => {
+    app.post("/comments", async (req, res) => {
       try {
         const { blogId, userName, userEmail, userPhoto, commentText } =
           req.body;
@@ -148,17 +148,17 @@ async function run() {
     app.patch("/comments/:id", logger, verifyToken, async (req, res) => {
       try {
         const id = req.params.id;
-        const filter = { blogId: new ObjectId(id) };
-        const updatedComment = req.body;
-        const result = await commentsCollection.updateOne(filter, {
-          $set: updatedComment,
-        });
+        const filter = { _id: new ObjectId(id) };
+        const { commentText } = req.body; // Destructure the commentText from req.body
+        const update = { $set: { commentText: commentText } }; // Specify the update operation
+        const result = await commentsCollection.updateOne(filter, update);
         res.send(result);
       } catch (error) {
         console.error("Error updating comment:", error);
         res.status(500).send({ message: "Error updating comment" });
       }
     });
+
     app.get("/comments/:id", async (req, res) => {
       try {
         const blogId = req.params.id;
@@ -169,6 +169,41 @@ async function run() {
         res.status(500).send({ message: "Error fetching comments" });
       }
     });
+
+
+
+    // feature api
+    // Assuming you have already defined routes and MongoDB setup...
+
+    app.get("/featured-blogs", async (req, res) => {
+      try {
+        const blogs = await blogsCollection.find({}).toArray();
+    
+        const featuredBlogs = blogs
+          .map((blog, index) => ({
+            ...blog,
+            wordCount: blog.long_description ? blog.long_description.split(" ").length : 0,
+            serialNumber: index + 1,
+          }))
+          .sort((a, b) => b.wordCount - a.wordCount) // Sort by descending order of word count
+          .slice(0, 10); // Get the top 10 featured blogs
+    
+        const formattedFeaturedBlogs = featuredBlogs.map((blog) => ({
+          _id: blog._id,
+          title: blog.title,
+          userName: blog.userName,
+          userPhoto: blog.userPhoto,
+        }));
+    
+        res.json(formattedFeaturedBlogs);
+      } catch (error) {
+        console.error("Error fetching featured blogs:", error);
+        res.status(500).json({ message: "Error fetching featured blogs" });
+      }
+    });
+    
+    
+
 
     // token code
     //creating Token
