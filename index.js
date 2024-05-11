@@ -13,13 +13,7 @@ const corsOptions = {
   credentials: true,
 };
 
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-};
-//localhost:5000 and localhost:5173 are treated as same site.  so sameSite value must be strict in development server.  in production sameSite will be none
-// in development server secure will false .  in production secure will be true
+
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
@@ -28,7 +22,6 @@ app.use(cookieParser());
 
 const uri = process.env.MONGO_URI;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -65,11 +58,33 @@ const commentsCollection = client.db("myBlog").collection("comments");
 async function run() {
   try {
 
+
     app.get("/blogs", async (req, res) => {
-      const cursor = blogsCollection.find();
-      const result = await cursor.toArray();
-      res.send(result);
-    })
+      try {
+        let query = {};
+        const search = req.query.search;
+        const category = req.query.category;
+    
+        if (search) {
+          query.title = { $regex: new RegExp(search, 'i') };
+        }
+    
+        if (category) {
+          query.category = category;
+        }
+    
+        const cursor = blogsCollection.find(query);
+        const result = await cursor.toArray();
+    
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching blogs:", error);
+        res.status(500).send({ message: "Error fetching blogs" });
+      }
+    });
+    
+    
+    
 
     app.post("/blogs", async (req, res) => {
       const blog = req.body;
@@ -77,6 +92,27 @@ async function run() {
       res.send(result);
     })
 
+
+    app.get("/blogs/:queryType/:queryValue", logger, verifyToken, async (req, res) => {
+      try{
+        const { queryType, queryValue } = req.params;
+        let query;
+        if (queryType === "id") {
+          query = { _id: new ObjectId(queryValue) };
+          const result = await blogsCollection.findOne(query); 
+          return res.json(result); 
+        } else if (queryType === "email") {
+          query = { userEmail: queryValue };
+          const result = await blogsCollection.find(query).toArray();
+          res.json(result);
+        }else {
+          return res.status(400).json({ error: "Invalid query type" });
+        }
+      } catch (error) {
+        console.error("Error fetching art & craft items:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    })
 
     app.patch("/blogs/:id",logger, verifyToken, async (req, res) => {
       const id = req.params.id;
@@ -146,13 +182,37 @@ app.get("/blogs/:id/comments", async (req, res) => {
 
     // token code
     //creating Token
-    app.post("/jwt", logger, verifyToken, async (req, res) => {
-      const user = req.body;
-      console.log("user for token", user);
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
-
-      res.cookie("token", token, cookieOptions).send({ success: true });
-    });
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+    };
+    //localhost:5000 and localhost:5173 are treated as same site.  so sameSite value must be strict in development server.  in production sameSite will be none
+    // in development server secure will false .  in production secure will be true
+  //creating Token
+  app.post("/jwt", async (req, res) => {
+    try {
+      // Extract email from request body
+      const { email } = req.body;
+      console.log("User for token:", email);
+      
+      // Generate JWT token
+      const token = jwt.sign({ email }, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+  
+      // Set the cookie with the token
+      res.cookie("token", token, cookieOptions);
+  
+      // Send the token in the response along with any other relevant data
+      res.json({ token, message: "successfully" });
+    } catch (error) {
+      console.error("Error creating JWT:", error);
+      // Send an appropriate error response
+      res.status(500).json({ message: "Error creating JWT" });
+    }
+  });
+  
 
     //clearing Token
     app.post("/logout", async (req, res) => {
@@ -162,8 +222,7 @@ app.get("/blogs/:id/comments", async (req, res) => {
         .clearCookie("token", { ...cookieOptions, maxAge: 0 })
         .send({ success: true });
     });
-    // await client.connect();
-    // await client.db("admin").command({ ping: 1 });
+  
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
