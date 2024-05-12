@@ -29,7 +29,6 @@ const client = new MongoClient(uri, {
 });
 
 const logger = (req, res, next) => {
-  console.log("log: info", req.method, req.url);
   next();
 };
 
@@ -49,32 +48,49 @@ const verifyToken = (req, res, next) => {
 };
 const blogsCollection = client.db("myBlog").collection("blogs");
 const commentsCollection = client.db("myBlog").collection("comments");
+const wishListCollection = client.db("myBlog").collection("wishlist");
 
 async function run() {
   try {
+
+
+
+
     app.get("/blogs", async (req, res) => {
       try {
         let query = {};
         const search = req.query.search;
         const category = req.query.category;
-
+        const sortByRecent = req.query.recent === 'true';
+    
         if (search) {
           query.title = { $regex: new RegExp(search, "i") };
         }
-
+    
         if (category) {
           query.category = category;
         }
-
+    
         const cursor = blogsCollection.find(query);
+    
+        if (sortByRecent) {
+          cursor.sort({ createdTime: -1 });
+        }
+    
+        if (sortByRecent) {
+          cursor.limit(6);
+        }
+    
         const result = await cursor.toArray();
-
+    
         res.send(result);
       } catch (error) {
         console.error("Error fetching blogs:", error);
         res.status(500).send({ message: "Error fetching blogs" });
       }
     });
+    
+    
 
     app.post("/blogs", async (req, res) => {
       const blog = req.body;
@@ -149,8 +165,8 @@ async function run() {
       try {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
-        const { commentText } = req.body; // Destructure the commentText from req.body
-        const update = { $set: { commentText: commentText } }; // Specify the update operation
+        const { commentText } = req.body; 
+        const update = { $set: { commentText: commentText } }; 
         const result = await commentsCollection.updateOne(filter, update);
         res.send(result);
       } catch (error) {
@@ -185,14 +201,15 @@ async function run() {
             wordCount: blog.long_description ? blog.long_description.split(" ").length : 0,
             serialNumber: index + 1,
           }))
-          .sort((a, b) => b.wordCount - a.wordCount) // Sort by descending order of word count
-          .slice(0, 10); // Get the top 10 featured blogs
+          .sort((a, b) => b.wordCount - a.wordCount) 
+          .slice(0, 10); 
     
         const formattedFeaturedBlogs = featuredBlogs.map((blog) => ({
           _id: blog._id,
           title: blog.title,
           userName: blog.userName,
           userPhoto: blog.userPhoto,
+          
         }));
     
         res.json(formattedFeaturedBlogs);
@@ -202,7 +219,28 @@ async function run() {
       }
     });
     
-    
+
+    // wishlist api
+    app.get("/wishlist", async (req, res) => {
+      try {
+        const wishlist = await wishlistCollection.find({}).toArray();
+        res.json(wishlist);
+      } catch (error) {
+        console.error("Error fetching wishlist:", error);
+        res.status(500).json({ message: "Error fetching wishlist" });
+      }
+    })
+    app.post("/wishlist", async (req, res) => {
+      const wishlist = req.body;
+      const result = await wishlistCollection.insertOne(wishlist);
+      res.send(result);
+    })
+    app.delete("/wishlist/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await wishlistCollection.deleteOne(query);
+      res.send(result);
+    })
 
 
     // token code
@@ -219,8 +257,6 @@ async function run() {
       try {
         // Extract email from request body
         const { email } = req.body;
-        console.log("User for token:", email);
-
         // Generate JWT token
         const token = jwt.sign({ email }, process.env.ACCESS_TOKEN_SECRET, {
           expiresIn: "1h",
@@ -241,7 +277,6 @@ async function run() {
     //clearing Token
     app.post("/logout", async (req, res) => {
       const user = req.body;
-      console.log("logging out", user);
       res
         .clearCookie("token", { ...cookieOptions, maxAge: 0 })
         .send({ success: true });
