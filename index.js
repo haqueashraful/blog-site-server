@@ -109,11 +109,11 @@ async function run() {
           if (queryType === "id") {
             query = { _id: new ObjectId(queryValue) };
             const result = await blogsCollection.findOne(query);
-            return res.json(result);
+            return res.send(result);
           } else if (queryType === "email") {
             query = { userEmail: queryValue };
             const result = await blogsCollection.find(query).toArray();
-            res.json(result);
+            res.send(result);
           } else {
             return res.status(400).json({ error: "Invalid query type" });
           }
@@ -223,8 +223,8 @@ async function run() {
     // wishlist api
     app.get("/wishlist", async (req, res) => {
       try {
-        const wishlist = await wishlistCollection.find({}).toArray();
-        res.json(wishlist);
+        const wishlist = await wishListCollection.find().toArray();
+        res.send(wishlist);
       } catch (error) {
         console.error("Error fetching wishlist:", error);
         res.status(500).json({ message: "Error fetching wishlist" });
@@ -232,15 +232,22 @@ async function run() {
     })
     app.post("/wishlist", async (req, res) => {
       const wishlist = req.body;
-      const result = await wishlistCollection.insertOne(wishlist);
+      const result = await wishListCollection.insertOne(wishlist);
       res.send(result);
     })
     app.delete("/wishlist/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await wishlistCollection.deleteOne(query);
-      res.send(result);
-    })
+      try {
+        const id = req.params.id;
+        console.log(id);
+        const query = { _id: id };
+        const result = await wishListCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        console.error("Error deleting item from wishlist:", error);
+        res.status(500).json({ message: "Error deleting item from wishlist" });
+      }
+    });
+    
 
 
     // token code
