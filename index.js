@@ -9,7 +9,7 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 const corsOptions = {
-  origin: ["http://localhost:5173", "*"],
+  origin: ["http://localhost:5173", "*" , "https://assignment-eleven-ha.netlify.app"],
   credentials: true,
 };
 
@@ -100,8 +100,6 @@ async function run() {
 
     app.get(
       "/blogs/:queryType/:queryValue",
-      logger,
-      verifyToken,
       async (req, res) => {
         try {
           const { queryType, queryValue } = req.params;
@@ -124,22 +122,34 @@ async function run() {
       }
     );
 
-    app.patch("/blogs/:id", logger, verifyToken, async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const updatedBlog = req.body;
-      const result = await blogsCollection.updateOne(filter, {
-        $set: updatedBlog,
-      });
-      res.send(result);
-    });
+   // Patch route for updating a blog entry
+app.patch("/blogs/:id", logger, verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const filter = { _id: new ObjectId(id) };
+    const updatedBlog = req.body;
+    const result = await blogsCollection.updateOne(filter, { $set: updatedBlog });
+    res.send(result);
+  } catch (error) {
+    console.error("Error updating blog:", error);
+    res.status(500).json({ message: "Error updating blog" });
+  }
+});
 
-    app.delete("/blogs/:id", logger, verifyToken, async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await blogsCollection.deleteOne(query);
-      res.send(result);
-    });
+// Delete route for deleting a blog entry
+app.delete("/blogs/:id", logger, verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    console.log(id)
+    const query = { _id: new ObjectId(id) };
+    const result = await blogsCollection.deleteOne(query);
+    res.send(result);
+  } catch (error) {
+    console.error("Error deleting blog:", error);
+    res.status(500).json({ message: "Error deleting blog" });
+  }
+})
+
 
     // comment api
     app.post("/comments", async (req, res) => {
@@ -161,7 +171,7 @@ async function run() {
       }
     });
 
-    app.patch("/comments/:id", logger, verifyToken, async (req, res) => {
+    app.patch("/comments/:id",  async (req, res) => {
       try {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
@@ -186,7 +196,17 @@ async function run() {
       }
     });
 
-
+    app.delete("/comments/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await commentsCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        console.error("Error deleting comment:", error);
+        res.status(500).send({ message: "Error deleting comment" });
+      }
+    })
 
     // feature api
     // Assuming you have already defined routes and MongoDB setup...
