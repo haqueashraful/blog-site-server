@@ -237,9 +237,10 @@ async function run() {
     });
 
     // wishlist api
-    app.get("/wishlist", async (req, res) => {
+    app.get("/wishlist/:email", async (req, res) => {
       try {
-        const wishlist = await wishListCollection.find().toArray();
+        const query = { userEmail: req.params.email };
+        const wishlist = await wishListCollection.find(query).toArray();
         res.send(wishlist);
       } catch (error) {
         console.error("Error fetching wishlist:", error);
