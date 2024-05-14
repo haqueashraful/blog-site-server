@@ -9,7 +9,11 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 const corsOptions = {
-  origin: ["http://localhost:5173", "*" , "https://assignment-eleven-ha.netlify.app"],
+  origin: [
+    "http://localhost:5173",
+    "*",
+    "https://assignment-eleven-ha.netlify.app",
+  ],
   credentials: true,
 };
 
@@ -35,16 +39,17 @@ const logger = (req, res, next) => {
 // token verify
 const verifyToken = (req, res, next) => {
   const token = req?.cookies.token;
+  console.log(token)
   if (!token) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  try {
-    const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) =>{
+    if(err){
+        return res.status(401).send({message: 'unauthorized access'})
+    }
     req.user = decoded;
     next();
-  } catch (error) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
+})
 };
 const blogsCollection = client.db("myBlog").collection("blogs");
 const commentsCollection = client.db("myBlog").collection("comments");
@@ -52,45 +57,39 @@ const wishListCollection = client.db("myBlog").collection("wishlist");
 
 async function run() {
   try {
-
-
-
-
     app.get("/blogs", async (req, res) => {
       try {
         let query = {};
         const search = req.query.search;
         const category = req.query.category;
-        const sortByRecent = req.query.recent === 'true';
-    
+        const sortByRecent = req.query.recent === "true";
+
         if (search) {
           query.title = { $regex: new RegExp(search, "i") };
         }
-    
+
         if (category) {
           query.category = category;
         }
-    
+
         const cursor = blogsCollection.find(query);
-    
+
         if (sortByRecent) {
           cursor.sort({ createdTime: -1 });
         }
-    
+
         if (sortByRecent) {
           cursor.limit(6);
         }
-    
+
         const result = await cursor.toArray();
-    
+
         res.send(result);
       } catch (error) {
         console.error("Error fetching blogs:", error);
         res.status(500).send({ message: "Error fetching blogs" });
       }
     });
-    
-    
 
     app.post("/blogs", async (req, res) => {
       const blog = req.body;
@@ -98,58 +97,56 @@ async function run() {
       res.send(result);
     });
 
-    app.get(
-      "/blogs/:queryType/:queryValue",
-      async (req, res) => {
-        try {
-          const { queryType, queryValue } = req.params;
-          let query;
-          if (queryType === "id") {
-            query = { _id: new ObjectId(queryValue) };
-            const result = await blogsCollection.findOne(query);
-            return res.send(result);
-          } else if (queryType === "email") {
-            query = { userEmail: queryValue };
-            const result = await blogsCollection.find(query).toArray();
-            res.send(result);
-          } else {
-            return res.status(400).json({ error: "Invalid query type" });
-          }
-        } catch (error) {
-          console.error("Error fetching art & craft items:", error);
-          res.status(500).json({ error: "Internal server error" });
+    app.get("/blogs/:queryType/:queryValue", async (req, res) => {
+      try {
+        const { queryType, queryValue } = req.params;
+        let query;
+        if (queryType === "id") {
+          query = { _id: new ObjectId(queryValue) };
+          const result = await blogsCollection.findOne(query);
+          return res.send(result);
+        } else if (queryType === "email") {
+          query = { userEmail: queryValue };
+          const result = await blogsCollection.find(query).toArray();
+          res.send(result);
+        } else {
+          return res.status(400).json({ error: "Invalid query type" });
         }
+      } catch (error) {
+        console.error("Error fetching art & craft items:", error);
+        res.status(500).json({ error: "Internal server error" });
       }
-    );
+    });
 
-   // Patch route for updating a blog entry
-app.patch("/blogs/:id", logger, verifyToken, async (req, res) => {
-  try {
-    const id = req.params.id;
-    const filter = { _id: new ObjectId(id) };
-    const updatedBlog = req.body;
-    const result = await blogsCollection.updateOne(filter, { $set: updatedBlog });
-    res.send(result);
-  } catch (error) {
-    console.error("Error updating blog:", error);
-    res.status(500).json({ message: "Error updating blog" });
-  }
-});
+    // Patch route for updating a blog entry
+    app.patch("/blogs/:id",  async (req, res) => {
+      try {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedBlog = req.body;
+        console.log(updatedBlog)
+        const result = await blogsCollection.updateOne(filter, {
+          $set: updatedBlog,
+        });
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating blog:", error);
+        res.status(500).json({ message: "Error updating blog" });
+      }
+    });
 
-// Delete route for deleting a blog entry
-app.delete("/blogs/:id", logger, verifyToken, async (req, res) => {
-  try {
-    const id = req.params.id;
-    console.log(id)
-    const query = { _id: new ObjectId(id) };
-    const result = await blogsCollection.deleteOne(query);
-    res.send(result);
-  } catch (error) {
-    console.error("Error deleting blog:", error);
-    res.status(500).json({ message: "Error deleting blog" });
-  }
-})
-
+    // Delete route for deleting a blog entry
+    app.delete("/blogs/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await blogsCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        console.error("Error deleting blog:", error);
+        res.status(500).json({ message: "Error deleting blog" });
+      }
+    });
 
     // comment api
     app.post("/comments", async (req, res) => {
@@ -171,12 +168,12 @@ app.delete("/blogs/:id", logger, verifyToken, async (req, res) => {
       }
     });
 
-    app.patch("/comments/:id",  async (req, res) => {
+    app.patch("/comments/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
-        const { commentText } = req.body; 
-        const update = { $set: { commentText: commentText } }; 
+        const { commentText } = req.body;
+        const update = { $set: { commentText: commentText } };
         const result = await commentsCollection.updateOne(filter, update);
         res.send(result);
       } catch (error) {
@@ -206,39 +203,38 @@ app.delete("/blogs/:id", logger, verifyToken, async (req, res) => {
         console.error("Error deleting comment:", error);
         res.status(500).send({ message: "Error deleting comment" });
       }
-    })
+    });
 
     // feature api
-    // Assuming you have already defined routes and MongoDB setup...
 
     app.get("/featured-blogs", async (req, res) => {
       try {
         const blogs = await blogsCollection.find({}).toArray();
-    
+
         const featuredBlogs = blogs
           .map((blog, index) => ({
             ...blog,
-            wordCount: blog.long_description ? blog.long_description.split(" ").length : 0,
+            wordCount: blog.long_description
+              ? blog.long_description.split(" ").length
+              : 0,
             serialNumber: index + 1,
           }))
-          .sort((a, b) => b.wordCount - a.wordCount) 
-          .slice(0, 10); 
-    
+          .sort((a, b) => b.wordCount - a.wordCount)
+          .slice(0, 10);
+
         const formattedFeaturedBlogs = featuredBlogs.map((blog) => ({
           _id: blog._id,
           title: blog.title,
           userName: blog.userName,
           userPhoto: blog.userPhoto,
-          
         }));
-    
+
         res.json(formattedFeaturedBlogs);
       } catch (error) {
         console.error("Error fetching featured blogs:", error);
         res.status(500).json({ message: "Error fetching featured blogs" });
       }
     });
-    
 
     // wishlist api
     app.get("/wishlist", async (req, res) => {
@@ -249,27 +245,30 @@ app.delete("/blogs/:id", logger, verifyToken, async (req, res) => {
         console.error("Error fetching wishlist:", error);
         res.status(500).json({ message: "Error fetching wishlist" });
       }
-    })
+    });
     app.post("/wishlist", async (req, res) => {
       const wishlist = req.body;
       const result = await wishListCollection.insertOne(wishlist);
       res.send(result);
-    })
+    });
     app.delete("/wishlist/:id", async (req, res) => {
       try {
         const id = req.params.id;
         console.log(id);
-        const query = { _id: id };
+        // Convert the string ID to a MongoDB ObjectId
+        const query = { _id: id};
         const result = await wishListCollection.deleteOne(query);
-        res.send(result);
+    
+        if (result.deletedCount === 1) {
+          res.status(200).json({ message: "Item successfully deleted from wishlist" });
+        } else {
+          res.status(404).json({ message: "Item not found in wishlist" });
+        }
       } catch (error) {
         console.error("Error deleting item from wishlist:", error);
         res.status(500).json({ message: "Error deleting item from wishlist" });
       }
     });
-    
-
-
     // token code
     //creating Token
     const cookieOptions = {
@@ -277,26 +276,17 @@ app.delete("/blogs/:id", logger, verifyToken, async (req, res) => {
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
     };
-    //localhost:5000 and localhost:5173 are treated as same site.  so sameSite value must be strict in development server.  in production sameSite will be none
-    // in development server secure will false .  in production secure will be true
-    //creating Token
-    app.post("/jwt", async (req, res) => {
+
+    app.post("/jwt", logger, async (req, res) => {
       try {
-        // Extract email from request body
-        const { email } = req.body;
-        // Generate JWT token
-        const token = jwt.sign({ email }, process.env.ACCESS_TOKEN_SECRET, {
-          expiresIn: "1h",
-        });
+        const  email  = req.body;
+        const token = jwt.sign( email , process.env.ACCESS_TOKEN_SECRET);
 
-        // Set the cookie with the token
-        res.cookie("token", token, cookieOptions);
-
-        // Send the token in the response along with any other relevant data
-        res.json({ token, message: "successfully" });
+        res
+        .cookie("token", token, cookieOptions)
+        .send({ token, message: "successfully" })
       } catch (error) {
         console.error("Error creating JWT:", error);
-        // Send an appropriate error response
         res.status(500).json({ message: "Error creating JWT" });
       }
     });
