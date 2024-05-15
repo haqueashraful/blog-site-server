@@ -39,7 +39,6 @@ const logger = (req, res, next) => {
 // token verify
 const verifyToken = (req, res, next) => {
   const token = req?.cookies.token;
-  console.log(token)
   if (!token) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -62,7 +61,8 @@ async function run() {
         let query = {};
         const search = req.query.search;
         const category = req.query.category;
-        const sortByRecent = req.query.recent === "true";
+        const skip = parseInt(req.query.skip);
+        const limit = parseInt(req.query.limit);
 
         if (search) {
           query.title = { $regex: new RegExp(search, "i") };
@@ -74,14 +74,7 @@ async function run() {
 
         const cursor = blogsCollection.find(query);
 
-        if (sortByRecent) {
-          cursor.sort({ createdTime: -1 });
-        }
-
-        if (sortByRecent) {
-          cursor.limit(6);
-        }
-
+        cursor.skip(skip).limit(limit);
         const result = await cursor.toArray();
 
         res.send(result);
@@ -90,6 +83,34 @@ async function run() {
         res.status(500).send({ message: "Error fetching blogs" });
       }
     });
+
+    app.get('/blogs/recent', async (req, res) => {
+      const result = await blogsCollection.find().sort({ createdTime: -1 }).limit(6).toArray();
+      res.send(result)
+    })
+
+    app.get("/totalcount", async (req, res) => {
+      try {
+        const search = req.query.search || "";
+        const category = req.query.category || "";
+        let query = {};
+    
+        if (search) {
+          query.title = { $regex: new RegExp(search, "i") };  
+        }
+    
+        if (category) {
+          query.category = category;
+        }
+    
+        const result = await blogsCollection.countDocuments(query);
+        res.send( {result} );
+      } catch (error) {
+        console.error("Error fetching total count:", error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+    
 
     app.post("/blogs", async (req, res) => {
       const blog = req.body;
@@ -124,7 +145,6 @@ async function run() {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
         const updatedBlog = req.body;
-        console.log(updatedBlog)
         const result = await blogsCollection.updateOne(filter, {
           $set: updatedBlog,
         });
@@ -247,16 +267,19 @@ async function run() {
         res.status(500).json({ message: "Error fetching wishlist" });
       }
     });
+
+    
     app.post("/wishlist", async (req, res) => {
       const wishlist = req.body;
       const result = await wishListCollection.insertOne(wishlist);
       res.send(result);
     });
+
+
+
     app.delete("/wishlist/:id", async (req, res) => {
       try {
         const id = req.params.id;
-        console.log(id);
-        // Convert the string ID to a MongoDB ObjectId
         const query = { _id: id};
         const result = await wishListCollection.deleteOne(query);
     
