@@ -4,6 +4,11 @@ const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
+const SSLCommerzPayment = require("sslcommerz-lts");
+
+const store_id = process.env.STORE_ID;
+const store_passwd = process.env.STORE_PASS;
+const is_live = false; //true for live, false for sandbox
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -52,8 +57,8 @@ const verifyToken = (req, res, next) => {
 };
 const blogsCollection = client.db("myBlog").collection("blogs");
 const commentsCollection = client.db("myBlog").collection("comments");
-const repliesCollection = client.db("myBlog").collection("replies");
 const wishListCollection = client.db("myBlog").collection("wishlist");
+const subscriptionCollection = client.db("myBlog").collection("subscription");
 
 async function run() {
   try {
@@ -256,45 +261,46 @@ async function run() {
         res.status(500).send({ message: "Error adding reply" });
       }
     });
-    const { ObjectId } = require('mongodb'); // Ensure you import ObjectId from mongodb
 
     app.patch("/comments/:commentId/replies/:replyId", async (req, res) => {
       try {
         const { commentId, replyId } = req.params;
         const { replyText } = req.body;
-    
+
         if (!ObjectId.isValid(commentId) || !ObjectId.isValid(replyId)) {
           return res.status(400).send({ message: "Invalid ObjectId format" });
         }
-    
+
         const commentObjectId = new ObjectId(commentId);
         const replyObjectId = new ObjectId(replyId);
-    
+
         // Fetch the specific comment
-        const comment = await commentsCollection.findOne({ _id: commentObjectId });
-    
+        const comment = await commentsCollection.findOne({
+          _id: commentObjectId,
+        });
+
         if (!comment) {
           return res.status(404).send({ message: "Comment not found" });
         }
-    
+
         // Find the specific reply in the replies array
         const replyIndex = comment.replies.findIndex(
           (reply) => String(reply._id) === String(replyObjectId)
         );
-    
+
         if (replyIndex === -1) {
           return res.status(404).send({ message: "Reply not found" });
         }
-    
+
         // Update the reply text
         comment.replies[replyIndex].replyText = replyText;
-    
+
         // Save the updated comment back to the database
         const result = await commentsCollection.updateOne(
           { _id: commentObjectId },
           { $set: { replies: comment.replies } }
         );
-    
+
         if (result.modifiedCount === 1) {
           res.status(200).send({ message: "Reply updated successfully" });
         } else {
@@ -305,44 +311,45 @@ async function run() {
         res.status(500).send({ message: "Error updating reply" });
       }
     });
-    
 
     app.delete("/comments/:commentId/replies/:replyId", async (req, res) => {
       try {
         const { commentId, replyId } = req.params;
-    
+
         if (!ObjectId.isValid(commentId) || !ObjectId.isValid(replyId)) {
           return res.status(400).send({ message: "Invalid ObjectId format" });
         }
-    
+
         const commentObjectId = new ObjectId(commentId);
         const replyObjectId = new ObjectId(replyId);
-    
+
         // Fetch the specific comment
-        const comment = await commentsCollection.findOne({ _id: commentObjectId });
-    
+        const comment = await commentsCollection.findOne({
+          _id: commentObjectId,
+        });
+
         if (!comment) {
           return res.status(404).send({ message: "Comment not found" });
         }
-    
+
         // Find the specific reply in the replies array
         const replyIndex = comment.replies.findIndex(
           (reply) => reply._id.toString() === replyObjectId.toString()
         );
-    
+
         if (replyIndex === -1) {
           return res.status(404).send({ message: "Reply not found" });
         }
-    
+
         // Remove the reply from the replies array
         comment.replies.splice(replyIndex, 1);
-    
+
         // Save the updated comment back to the database
         const result = await commentsCollection.updateOne(
           { _id: commentObjectId },
           { $set: { replies: comment.replies } }
         );
-    
+
         if (result.modifiedCount === 1) {
           res.status(200).send({ message: "Reply deleted successfully" });
         } else {
@@ -353,7 +360,6 @@ async function run() {
         res.status(500).send({ message: "Error deleting reply" });
       }
     });
-    
 
     // feature api
 
@@ -450,6 +456,77 @@ async function run() {
       res
         .clearCookie("token", { ...cookieOptions, maxAge: 0 })
         .send({ success: true });
+    });
+
+    // payment
+    app.post("/payment", async (req, res) => {
+      const trans_id = new ObjectId().toString();
+      const payment = req.body;
+      const data = {
+        total_amount: 100,
+        currency: "BDT",
+        tran_id: trans_id, // use unique tran_id for each api call
+        success_url: `http://localhost:5000/success/${trans_id}`,
+        fail_url: "http://localhost:3030/fail",
+        cancel_url: "http://localhost:3030/cancel",
+        ipn_url: "http://localhost:3030/ipn",
+        shipping_method: "Courier",
+        product_name: "Computer.",
+        product_category: "Electronic",
+        product_profile: "general",
+        cus_name: payment.name,
+        cus_email: payment.email,
+        cus_add1: "Dhaka",
+        cus_add2: "Dhaka",
+        cus_city: "Dhaka",
+        cus_state: "Dhaka",
+        cus_postcode: "1000",
+        cus_country: "Bangladesh",
+        cus_phone: payment.phone,
+        cus_fax: "01711111111",
+        ship_name: "Customer Name",
+        ship_add1: "Dhaka",
+        ship_add2: "Dhaka",
+        ship_city: "Dhaka",
+        ship_state: "Dhaka",
+        ship_postcode: 1000,
+        ship_country: "Bangladesh",
+      };
+
+      console.log(data);
+      const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+      sslcz.init(data).then((apiResponse) => {
+        // Redirect the user to payment gateway
+        let GatewayPageURL = apiResponse.GatewayPageURL;
+        res.send({ url: GatewayPageURL });
+        // res.redirect(303, GatewayPageURL);
+        const subscriber = {
+          name: payment.name,
+          email: payment.email,
+          phone: payment.phone,
+          trans_id: trans_id,
+          paid: false,
+        };
+        const result = subscriptionCollection.insertOne(subscriber);
+        console.log("Redirecting to: ", GatewayPageURL);
+      });
+    });
+
+    // payment success
+    app.post("/success/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await subscriptionCollection.updateOne(
+        { trans_id: id },
+        { $set: { paid: true } }
+      );
+
+      if (result.modifiedCount > 0) {
+        res.redirect("http://localhost:5173/subscription/success");
+      } else {
+        res.send({ success: false });
+      }
+      console.log(`Payment Successful. Your transaction id: ${id}`);
     });
   } finally {
     // await client.close();
