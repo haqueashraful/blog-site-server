@@ -42,16 +42,17 @@ const verifyToken = (req, res, next) => {
   if (!token) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) =>{
-    if(err){
-        return res.status(401).send({message: 'unauthorized access'})
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "unauthorized access" });
     }
     req.user = decoded;
     next();
-})
+  });
 };
 const blogsCollection = client.db("myBlog").collection("blogs");
 const commentsCollection = client.db("myBlog").collection("comments");
+const repliesCollection = client.db("myBlog").collection("replies");
 const wishListCollection = client.db("myBlog").collection("wishlist");
 
 async function run() {
@@ -84,33 +85,36 @@ async function run() {
       }
     });
 
-    app.get('/blogs/recent', async (req, res) => {
-      const result = await blogsCollection.find().sort({ createdTime: -1 }).limit(6).toArray();
-      res.send(result)
-    })
+    app.get("/blogs/recent", async (req, res) => {
+      const result = await blogsCollection
+        .find()
+        .sort({ createdTime: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
 
     app.get("/totalcount", async (req, res) => {
       try {
         const search = req.query.search || "";
         const category = req.query.category || "";
         let query = {};
-    
+
         if (search) {
-          query.title = { $regex: new RegExp(search, "i") };  
+          query.title = { $regex: new RegExp(search, "i") };
         }
-    
+
         if (category) {
           query.category = category;
         }
-    
+
         const result = await blogsCollection.countDocuments(query);
-        res.send( {result} );
+        res.send({ result });
       } catch (error) {
         console.error("Error fetching total count:", error);
         res.status(500).json({ error: "Internal server error" });
       }
     });
-    
 
     app.post("/blogs", async (req, res) => {
       const blog = req.body;
@@ -140,7 +144,7 @@ async function run() {
     });
 
     // Patch route for updating a blog entry
-    app.patch("/blogs/:id",  async (req, res) => {
+    app.patch("/blogs/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
@@ -225,6 +229,132 @@ async function run() {
       }
     });
 
+    // replies api
+    app.post("/comments/:id/replies", async (req, res) => {
+      try {
+        const commentId = req.params.id;
+        const reply = req.body;
+
+        // Add a new _id to the reply
+        const newReply = {
+          ...reply,
+          _id: new ObjectId(),
+        };
+
+        const filter = { _id: new ObjectId(commentId) };
+        const update = { $push: { replies: newReply } };
+
+        const result = await commentsCollection.updateOne(filter, update);
+
+        if (result.modifiedCount === 1) {
+          res.status(200).send({ message: "Reply added successfully" });
+        } else {
+          res.status(404).send({ message: "Comment not found" });
+        }
+      } catch (error) {
+        console.error("Error adding reply:", error);
+        res.status(500).send({ message: "Error adding reply" });
+      }
+    });
+    const { ObjectId } = require('mongodb'); // Ensure you import ObjectId from mongodb
+
+    app.patch("/comments/:commentId/replies/:replyId", async (req, res) => {
+      try {
+        const { commentId, replyId } = req.params;
+        const { replyText } = req.body;
+    
+        if (!ObjectId.isValid(commentId) || !ObjectId.isValid(replyId)) {
+          return res.status(400).send({ message: "Invalid ObjectId format" });
+        }
+    
+        const commentObjectId = new ObjectId(commentId);
+        const replyObjectId = new ObjectId(replyId);
+    
+        // Fetch the specific comment
+        const comment = await commentsCollection.findOne({ _id: commentObjectId });
+    
+        if (!comment) {
+          return res.status(404).send({ message: "Comment not found" });
+        }
+    
+        // Find the specific reply in the replies array
+        const replyIndex = comment.replies.findIndex(
+          (reply) => String(reply._id) === String(replyObjectId)
+        );
+    
+        if (replyIndex === -1) {
+          return res.status(404).send({ message: "Reply not found" });
+        }
+    
+        // Update the reply text
+        comment.replies[replyIndex].replyText = replyText;
+    
+        // Save the updated comment back to the database
+        const result = await commentsCollection.updateOne(
+          { _id: commentObjectId },
+          { $set: { replies: comment.replies } }
+        );
+    
+        if (result.modifiedCount === 1) {
+          res.status(200).send({ message: "Reply updated successfully" });
+        } else {
+          res.status(500).send({ message: "Failed to update reply" });
+        }
+      } catch (error) {
+        console.error("Error updating reply:", error);
+        res.status(500).send({ message: "Error updating reply" });
+      }
+    });
+    
+
+    app.delete("/comments/:commentId/replies/:replyId", async (req, res) => {
+      try {
+        const { commentId, replyId } = req.params;
+    
+        if (!ObjectId.isValid(commentId) || !ObjectId.isValid(replyId)) {
+          return res.status(400).send({ message: "Invalid ObjectId format" });
+        }
+    
+        const commentObjectId = new ObjectId(commentId);
+        const replyObjectId = new ObjectId(replyId);
+    
+        // Fetch the specific comment
+        const comment = await commentsCollection.findOne({ _id: commentObjectId });
+    
+        if (!comment) {
+          return res.status(404).send({ message: "Comment not found" });
+        }
+    
+        // Find the specific reply in the replies array
+        const replyIndex = comment.replies.findIndex(
+          (reply) => reply._id.toString() === replyObjectId.toString()
+        );
+    
+        if (replyIndex === -1) {
+          return res.status(404).send({ message: "Reply not found" });
+        }
+    
+        // Remove the reply from the replies array
+        comment.replies.splice(replyIndex, 1);
+    
+        // Save the updated comment back to the database
+        const result = await commentsCollection.updateOne(
+          { _id: commentObjectId },
+          { $set: { replies: comment.replies } }
+        );
+    
+        if (result.modifiedCount === 1) {
+          res.status(200).send({ message: "Reply deleted successfully" });
+        } else {
+          res.status(500).send({ message: "Failed to delete reply" });
+        }
+      } catch (error) {
+        console.error("Error deleting reply:", error);
+        res.status(500).send({ message: "Error deleting reply" });
+      }
+    });
+    
+
     // feature api
 
     app.get("/featured-blogs", async (req, res) => {
@@ -268,23 +398,22 @@ async function run() {
       }
     });
 
-    
     app.post("/wishlist", async (req, res) => {
       const wishlist = req.body;
       const result = await wishListCollection.insertOne(wishlist);
       res.send(result);
     });
 
-
-
     app.delete("/wishlist/:id", async (req, res) => {
       try {
         const id = req.params.id;
-        const query = { _id: id};
+        const query = { _id: id };
         const result = await wishListCollection.deleteOne(query);
-    
+
         if (result.deletedCount === 1) {
-          res.status(200).json({ message: "Item successfully deleted from wishlist" });
+          res
+            .status(200)
+            .json({ message: "Item successfully deleted from wishlist" });
         } else {
           res.status(404).json({ message: "Item not found in wishlist" });
         }
@@ -303,12 +432,12 @@ async function run() {
 
     app.post("/jwt", logger, async (req, res) => {
       try {
-        const  email  = req.body;
-        const token = jwt.sign( email , process.env.ACCESS_TOKEN_SECRET);
+        const email = req.body;
+        const token = jwt.sign(email, process.env.ACCESS_TOKEN_SECRET);
 
         res
-        .cookie("token", token, cookieOptions)
-        .send({ token, message: "successfully" })
+          .cookie("token", token, cookieOptions)
+          .send({ token, message: "successfully" });
       } catch (error) {
         console.error("Error creating JWT:", error);
         res.status(500).json({ message: "Error creating JWT" });
@@ -322,7 +451,6 @@ async function run() {
         .clearCookie("token", { ...cookieOptions, maxAge: 0 })
         .send({ success: true });
     });
-
   } finally {
     // await client.close();
   }
